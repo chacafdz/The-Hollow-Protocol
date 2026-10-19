@@ -1,0 +1,10 @@
+﻿Modelado 3D de The Hollow Protocol
+
+Los modelos se hicieron en Maya y se exportaron a FBX dentro del proyecto de Unity:
+
+  Assets/_Prefabs/labV2.fbx y labvV2Inicio.fbx  -> laboratorio
+  Assets/_Prefabs/torre.fbx                     -> Torre 7
+  Assets/_Prefabs/CasaVieja.fbx                 -> casa vieja
+  Assets/_Prefabs/cabana.fbx (cabaña.fbx)       -> cabaña, con sus texturas en Assets/_Textures/Cabaña
+
+El monstruo es un modelo de terceros: ver CREDITS.txt.

@@ -2,17 +2,22 @@ using UnityEngine;
 
 // Poner en Puerta_Salida. Se desliza hacia arriba al abrirse.
 // En "Move With" arrastra las piezas que deben subir con la puerta (por ejemplo Puerta_Salida_franja).
+// El final del juego ahora ocurre en la cabana (EndTrigger), no aqui.
 public class ExitDoor : Interactable
 {
     public float openHeight = 2.4f;
     public float openSpeed = 1.5f;
-    public AudioClip finalSting;      // golpe fuerte o sonido repentino al terminar
+    public AudioClip finalSting;      // opcional: sonido al abrir
     public Transform[] moveWith;      // piezas que suben junto con la puerta
+    [TextArea] public string openMessage = "Acceso concedido. Algo te espera afuera…";
 
     bool opened;
     Vector3 openPos;
 
     public override bool CanInteract => !opened;
+
+    /// <summary>Verdadero cuando la puerta de salida del laboratorio ya se abrio (la usa el enemigo).</summary>
+    public bool IsOpen => opened;
 
     void Reset() { prompt = "Pulsa E para abrir"; }
 
@@ -31,7 +36,6 @@ public class ExitDoor : Interactable
 
         opened = true;
 
-        // Quita colliders de la puerta y de sus piezas para que nunca bloqueen el paso
         foreach (var c in GetComponentsInChildren<Collider>()) c.enabled = false;
         foreach (var t in moveWith)
             if (t != null)
@@ -40,7 +44,7 @@ public class ExitDoor : Interactable
         PlaySound();
         if (finalSting != null)
             AudioSource.PlayClipAtPoint(finalSting, transform.position);
-        player.ShowMessage("Registro recuperado. Movimiento detectado detrás de ti…", 8f);
+        player.ShowMessage(openMessage, 5f);
     }
 
     void Update()

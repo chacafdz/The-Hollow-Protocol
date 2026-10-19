@@ -73,3 +73,17 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# --- Demo del pack Realistic Terrain Textures Lite (no lo usa el juego) ---
+/Assets/ObjectiveEnvironment_Assets/Realistic Terrain Textures Lite/Scenes/
+/Assets/ObjectiveEnvironment_Assets/Realistic Terrain Textures Lite/Scenes.meta
+
+# --- Builds locales y respaldos ---
+/Build_Videojuego/
+*.rar
+
+# --- Doxygen: se ignora el HTML suelto; el zip si se sube ---
+/Dise*/Documentos/Doxygen/salida/
+
+# --- Configuracion de Obsidian (no es parte del juego) ---
+/.obsidian/

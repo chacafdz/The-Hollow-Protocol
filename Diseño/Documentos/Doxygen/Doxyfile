@@ -1,0 +1,17 @@
+# Doxygen - The Hollow Protocol (EBAC Proyecto Final)
+PROJECT_NAME           = "The Hollow Protocol"
+PROJECT_BRIEF          = "Survival horror en Unity 6"
+OUTPUT_DIRECTORY       = ./salida
+INPUT                  = ../../../Assets/_Scripts
+FILE_PATTERNS          = *.cs
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+OPTIMIZE_OUTPUT_JAVA   = YES
+OUTPUT_LANGUAGE        = Spanish
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HAVE_DOT               = NO
+SOURCE_BROWSER         = YES
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO

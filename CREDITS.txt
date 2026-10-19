@@ -1,0 +1,14 @@
+THE HOLLOW PROTOCOL - CREDITS
+
+3D Models
+"Smily horror monster" (https://skfb.ly/6W6ut) by Bento is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
+Torre, casa vieja, cabaña, laboratorio y brujula: modelados por el autor en Maya.
+
+Environment packs (see each pack's license inside Assets)
+- Realistic Terrain Textures Lite (Assets/ObjectiveEnvironment_Assets)
+- Realistic Tree (Assets/Realistic Tree)
+- GrassFlowers FREE (Assets/ALP_Assets)
+
+Sound effects and ambience (Assets/_Audio)
+Third-party audio. The author name appears at the start of each file name. Authors: audiopapkin, dragon-studio, estudiocoati, freesound_community, jmalraux2022, magiaz, mollyroselee, mrfriends, pantoman, soundreality, theenderman, thestoryrug, universfield.
+Revisa la licencia de cada archivo en su sitio de origen antes de publicar el juego.
