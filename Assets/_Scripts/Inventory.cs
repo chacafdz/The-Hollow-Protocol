@@ -7,6 +7,9 @@ public class Inventory : MonoBehaviour
     readonly HashSet<string> keys = new HashSet<string>();
     public int cluesFound;
 
+    /// <summary>Balas de reserva para recargar la pistola (se consiguen en cajas de municion).</summary>
+    public int reserveAmmo;
+
     public void AddKey(string id) { keys.Add(id); }
 
     // Una llave vacia significa "sin llave": la puerta se abre libremente

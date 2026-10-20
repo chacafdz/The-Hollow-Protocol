@@ -74,6 +74,197 @@ public static class HollowProtocolFixes
         return "OK    " + label + ": " + clip.name + "\n";
     }
 
+    // Pone la caja de municion (6 balas) arriba de la cama de la torre, fija en la escena para poder moverla.
+    // (Si no la haces, el juego la coloca sola al empezar.)
+    [MenuItem("Tools/Hollow Protocol/Crear caja de municion en la torre")]
+    public static void CreateAmmoBox()
+    {
+        Transform mattress = null, pillow = null;
+        foreach (var t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (t.name == "T_Cama_colchon") mattress = t;
+            else if (t.name == "T_Cama_almohada") pillow = t;
+        }
+        if (mattress == null)
+        {
+            EditorUtility.DisplayDialog("Hollow Protocol", "No encontré la cama de la torre (T_Cama_colchon) en esta escena. Abre SampleScene.", "OK");
+            return;
+        }
+
+        var old = GameObject.Find(AmmoBox.BoxName);
+        if (old != null) Undo.DestroyObjectImmediate(old);
+
+        var box = AmmoBox.Create(mattress, pillow, true);
+        Undo.RegisterCreatedObjectUndo(box, "Caja de munición");
+        Selection.activeGameObject = box;
+        AssetDatabase.SaveAssets();
+        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        Debug.Log("[Hollow Protocol] Caja de munición creada en " + box.transform.position + " con " + AmmoBox.Bullets + " balas.");
+        EditorUtility.DisplayDialog("Hollow Protocol", "Caja con " + AmmoBox.Bullets + " balas creada sobre la cama de la torre.\nPuedes moverla; guarda con Ctrl+S.", "OK");
+    }
+
+    // Quita los colliders enormes de los caminos (Spline Extrude) y les agrega el ajuste automatico a su forma real.
+    [MenuItem("Tools/Hollow Protocol/Ajustar colliders de los caminos (splines)")]
+    public static void FitSplineColliders()
+    {
+        int paths = 0; string report = "";
+        foreach (var mf in Object.FindObjectsByType<MeshFilter>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            var t = mf.transform;
+            if (!SplineColliderFit.IsSplinePath(t)) continue;
+
+            foreach (var c in t.GetComponents<Collider>())
+            {
+                report += "  quitado " + c.GetType().Name + " de " + t.name + "\n";
+                Undo.DestroyObjectImmediate(c);
+            }
+            if (t.GetComponent<SplineColliderFit>() == null) Undo.AddComponent<SplineColliderFit>(t.gameObject);
+            paths++;
+        }
+
+        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        string msg = paths + " camino(s) ajustado(s).\n" + (report.Length > 0 ? report : "  (no tenían colliders)\n")
+                   + "\nEn Play, cada camino recibe un MeshCollider con su forma exacta.\nGuarda con Ctrl+S.";
+        Debug.Log("[Hollow Protocol] Colliders de caminos\n" + msg);
+        EditorUtility.DisplayDialog("Hollow Protocol", msg, "OK");
+    }
+    // Crea (o reutiliza) los dos puntos de la ruta del primer avistamiento: Avistamiento_Inicio y Avistamiento_Fin.
+    // Los coloca cruzando el camino (spline) mas cercano al jugador; despues los arrastras a donde quieras.
+    [MenuItem("Tools/Hollow Protocol/Crear puntos de avistamiento del enemigo")]
+    public static void CreateSightingMarkers()
+    {
+        var player = Object.FindFirstObjectByType<PlayerController>();
+        Vector3 from = player != null ? player.transform.position : Vector3.zero;
+
+        System.Func<Vector3, Vector3> flat = v => new Vector3(v.x, 0f, v.z);
+        Vector3 nearEnd = Vector3.zero, farEnd = Vector3.zero;
+        float best = float.MaxValue;
+        bool found = false;
+
+        foreach (var mf in Object.FindObjectsByType<MeshFilter>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (!SplineColliderFit.IsSplinePath(mf.transform) || mf.sharedMesh == null) continue;
+            var verts = mf.sharedMesh.vertices;
+            if (verts.Length < 4) continue;
+
+            var pts = new Vector3[verts.Length];
+            Vector3 c = Vector3.zero;
+            for (int i = 0; i < verts.Length; i++) { pts[i] = mf.transform.TransformPoint(verts[i]); c += pts[i]; }
+            c /= pts.Length;
+
+            Vector3 e0 = Farthest(pts, c), e1 = Farthest(pts, e0);      // los dos extremos del camino
+            float d0 = (flat(e0) - flat(from)).magnitude, d1 = (flat(e1) - flat(from)).magnitude;
+            float d = Mathf.Min(d0, d1);
+            if (d < best)
+            {
+                best = d; found = true;
+                nearEnd = d0 <= d1 ? e0 : e1;
+                farEnd  = d0 <= d1 ? e1 : e0;
+            }
+        }
+
+        Vector3 along, mid;
+        if (found)
+        {
+            along = flat(farEnd - nearEnd).normalized;
+            mid = nearEnd + (farEnd - nearEnd) * 0.28f;       // a poco menos de un tercio del camino
+        }
+        else
+        {
+            along = player != null ? flat(player.transform.forward).normalized : Vector3.forward;
+            mid = from + along * 45f;
+        }
+        Vector3 perp = new Vector3(-along.z, 0f, along.x);
+        Vector3 a = Ground(mid - perp * 30f), b = Ground(mid + perp * 30f);
+
+        var start = GetOrCreate("Avistamiento_Inicio", a);
+        var end = GetOrCreate("Avistamiento_Fin", b);
+        var marker = start.GetComponent<SightingMarker>();
+        if (marker == null) marker = Undo.AddComponent<SightingMarker>(start);
+        marker.other = end.transform;
+        EditorUtility.SetDirty(marker);
+
+        Selection.objects = new Object[] { start, end };
+        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        string msg = "Puntos creados" + (found ? " cruzando el camino más cercano a ti" : " frente al jugador") + ".\n\n"
+                   + "El enemigo camina de Avistamiento_Inicio a Avistamiento_Fin (la línea roja que ves en la escena).\n"
+                   + "Arrástralos a donde quieras y guarda con Ctrl+S.\n\n"
+                   + "Empieza a caminar cuando sales del lab, estás a menos de 70 m del centro de la ruta y miras hacia ella.";
+        Debug.Log("[Hollow Protocol] " + msg);
+        EditorUtility.DisplayDialog("Hollow Protocol", msg, "OK");
+    }
+
+    static Vector3 Farthest(Vector3[] pts, Vector3 from)
+    {
+        Vector3 best = pts[0]; float bd = -1f;
+        foreach (var p in pts)
+        {
+            float d = new Vector2(p.x - from.x, p.z - from.z).sqrMagnitude;
+            if (d > bd) { bd = d; best = p; }
+        }
+        return best;
+    }
+
+    static Vector3 Ground(Vector3 p)
+    {
+        var t = Terrain.activeTerrain;
+        if (t != null) p.y = t.SampleHeight(p) + t.transform.position.y;
+        return p;
+    }
+
+    static GameObject GetOrCreate(string name, Vector3 pos)
+    {
+        var go = GameObject.Find(name);
+        if (go == null)
+        {
+            go = new GameObject(name);
+            Undo.RegisterCreatedObjectUndo(go, "Punto de avistamiento");
+        }
+        else Undo.RecordObject(go.transform, "Mover punto de avistamiento");
+        go.transform.position = pos;
+        return go;
+    }
+    // Crea (o recalcula) la zona rectangular roja entre la torre y la cabaña donde el enemigo aparece
+    // cuando llegas a la cabaña. Sale de las posiciones de la torre y la cabaña; despues la mueves o la estiras.
+    [MenuItem("Tools/Hollow Protocol/Crear zona de aparicion del enemigo (torre-cabaña)")]
+    public static void CreateSpawnZone()
+    {
+        Transform tower = null, cabin = null;
+        foreach (var t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            string n = t.name.ToLowerInvariant().Replace("ñ", "n").Replace(" ", "").Replace("_", "");
+            if (n == "torre") tower = t;
+            else if (n == "cabana" || n == "cabanachida") cabin = t;
+        }
+        if (cabin == null)
+        {
+            EditorUtility.DisplayDialog("Hollow Protocol", "No encontré la cabaña en esta escena. Abre SampleScene.", "OK");
+            return;
+        }
+
+        var zone = Object.FindFirstObjectByType<EnemySpawnZone>(FindObjectsInactive.Include);
+        if (zone == null)
+        {
+            var go = new GameObject("Zona_Aparicion_Enemigo");
+            Undo.RegisterCreatedObjectUndo(go, "Zona de aparición");
+            zone = go.AddComponent<EnemySpawnZone>();
+        }
+        Undo.RecordObject(zone.transform, "Zona de aparición");
+        Undo.RecordObject(zone, "Zona de aparición");
+        zone.cabin = cabin;
+        zone.tower = tower;
+        zone.Fit(tower != null ? tower.position : cabin.position - Vector3.forward * 150f, cabin.position);
+        EditorUtility.SetDirty(zone);
+
+        Selection.activeGameObject = zone.gameObject;
+        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        string msg = "Zona creada entre la torre y la cabaña.\n\n"
+                   + "Centro: " + zone.transform.position + "\nAncho x largo: " + zone.size.x + " x " + zone.size.y + " m\n\n"
+                   + "Muévela con la herramienta Mover, gírala o cambia 'Size' en el Inspector para que coincida con tu dibujo rojo. Guarda con Ctrl+S.\n"
+                   + "Cuando llegues a menos de 60 m de la cabaña, el enemigo aparece dentro de este rectángulo.";
+        Debug.Log("[Hollow Protocol] " + msg);
+        EditorUtility.DisplayDialog("Hollow Protocol", msg, "OK");
+    }
     static string AttachTo(Transform[] all, string doorName, string[] partNames)
     {
         var door = FindExact(all, doorName);

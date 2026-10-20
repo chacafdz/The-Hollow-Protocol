@@ -7,43 +7,54 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 
 /// <summary>
-/// Menus del editor para la entrega: crear la escena del menu principal, configurar Build Settings
+/// Menus del editor para la entrega: configurar Build Settings con el menu principal y el nivel,
 /// y compilar el juego para Windows en un .zip.
 /// </summary>
 public static class HollowProtocolMenuBuilder
 {
     const string LevelPath = "Assets/Scenes/SampleScene.unity";
-    const string MenuPath = "Assets/Scenes/MainMenu.unity";
+    const string MenuPath = "Assets/Scenes/Main Menu.unity";
 
-    /// <summary>Crea Assets/Scenes/MainMenu.unity y deja MainMenu (0) y SampleScene (1) en Build Settings.</summary>
-    [MenuItem("Tools/Hollow Protocol/Crear menu principal y configurar Build Settings")]
-    public static void CreateMainMenu()
+    /// <summary>
+    /// Deja "Main Menu" (0) y "SampleScene" (1) en Build Settings. Si la escena del menu ya existe solo
+    /// le agrega el componente MainMenu cuando falta; si no existe, la crea.
+    /// </summary>
+    [MenuItem("Tools/Hollow Protocol/Configurar menu principal y Build Settings")]
+    public static void SetupMainMenu()
     {
         if (!File.Exists(LevelPath)) { EditorUtility.DisplayDialog("Hollow Protocol", "No encontré " + LevelPath, "OK"); return; }
         if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
 
-        var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        bool existed = File.Exists(MenuPath);
+        var scene = existed
+            ? EditorSceneManager.OpenScene(MenuPath, OpenSceneMode.Single)
+            : EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-        // camara negra
-        var camGo = new GameObject("Main Camera");
-        camGo.tag = "MainCamera";
-        var cam = camGo.AddComponent<Camera>();
-        cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = new Color(0.02f, 0.02f, 0.03f);
-        camGo.AddComponent<AudioListener>();
-
-        // componente del menu
-        var go = new GameObject("MainMenu");
-        var menu = go.AddComponent<MainMenu>();
-        menu.levelScene = "SampleScene";
-
-        var music = FindClip("dark-horror-soundscape");
-        if (music == null) music = FindClip("creepy-atmosphere");
-        if (music != null)
+        var menu = Object.FindFirstObjectByType<MainMenu>();
+        if (menu == null)
         {
-            var so = new SerializedObject(menu);
-            so.FindProperty("menuMusic").objectReferenceValue = music;
-            so.ApplyModifiedProperties();
+            if (Camera.main == null)
+            {
+                var camGo = new GameObject("Main Camera");
+                camGo.tag = "MainCamera";
+                var cam = camGo.AddComponent<Camera>();
+                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.backgroundColor = new Color(0.02f, 0.02f, 0.03f);
+                camGo.AddComponent<AudioListener>();
+            }
+
+            var go = new GameObject("MainMenu");
+            menu = go.AddComponent<MainMenu>();
+            menu.levelScene = "SampleScene";
+
+            var music = FindClip("dark-horror-soundscape");
+            if (music == null) music = FindClip("creepy-atmosphere");
+            if (music != null)
+            {
+                var so = new SerializedObject(menu);
+                so.FindProperty("menuMusic").objectReferenceValue = music;
+                so.ApplyModifiedProperties();
+            }
         }
 
         EditorSceneManager.SaveScene(scene, MenuPath);
@@ -55,9 +66,9 @@ public static class HollowProtocolMenuBuilder
         };
 
         EditorSceneManager.OpenScene(LevelPath);   // vuelve al nivel
-        Debug.Log("[Hollow Protocol] Menu principal creado en " + MenuPath + " (musica: " + (music != null ? music.name : "ninguna") + ")");
+        Debug.Log("[Hollow Protocol] Build Settings: 0 = Main Menu, 1 = SampleScene.");
         EditorUtility.DisplayDialog("Hollow Protocol",
-            "Listo.\n\nBuild Settings:\n  0  MainMenu\n  1  SampleScene\n\nPara probar el menu abre Assets/Scenes/MainMenu.unity y pulsa Play.", "OK");
+            "Listo.\n\nBuild Settings:\n  0  Main Menu\n  1  SampleScene\n\nPara probar el menú abre Assets/Scenes/Main Menu.unity y pulsa Play.", "OK");
     }
 
     /// <summary>Compila para Windows 64 bits en Build_Videojuego/ y lo comprime en Build_Videojuego.zip.</summary>
@@ -67,7 +78,7 @@ public static class HollowProtocolMenuBuilder
         var scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray();
         if (scenes.Length == 0)
         {
-            EditorUtility.DisplayDialog("Hollow Protocol", "Build Settings no tiene escenas. Corre primero 'Crear menu principal y configurar Build Settings'.", "OK");
+            EditorUtility.DisplayDialog("Hollow Protocol", "Build Settings no tiene escenas. Corre primero 'Configurar menu principal y Build Settings'.", "OK");
             return;
         }
 

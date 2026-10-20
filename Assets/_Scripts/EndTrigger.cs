@@ -12,6 +12,10 @@ public class EndTrigger : MonoBehaviour
 {
     [TextArea] public string finalMessage = "Registro recuperado. Movimiento detectado detrás de ti…";
     public string endTitle = "FIN";
+    /// <summary>Titulo de la pantalla de victoria.</summary>
+    public string winTitle = "MISIÓN CUMPLIDA";
+    /// <summary>Epilogo mostrado en la pantalla de victoria.</summary>
+    [TextArea] public string epilogue = "Recuperaste el registro. CRAYO ya no podrá negar lo que hizo, pero lo que despertó en este bosque ya te vio.";
     public AudioClip sting;                      // golpe fuerte o sonido repentino
     public float delay = 4f;                     // segundos antes de empezar el fundido
     public float fadeTime = 3f;
@@ -112,14 +116,19 @@ public class EndTrigger : MonoBehaviour
                 fontSize = Mathf.RoundToInt(Screen.height * 0.08f)
             };
             GUI.color = Color.white;
-            GUI.Label(new Rect(0, Screen.height * 0.3f, Screen.width, Screen.height * 0.2f), endTitle, style);
+            GUI.color = new Color(0.95f, 0.8f, 0.3f);
+            GUI.Label(new Rect(0, Screen.height * 0.2f, Screen.width, Screen.height * 0.2f), winTitle, style);
+            var ep = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.UpperCenter, wordWrap = true, fontSize = Mathf.RoundToInt(Screen.height * 0.03f) };
+            GUI.color = new Color(0.85f, 0.85f, 0.85f);
+            GUI.Label(new Rect(Screen.width * 0.2f, Screen.height * 0.4f, Screen.width * 0.6f, Screen.height * 0.18f), epilogue, ep);
+            GUI.color = Color.white;
             // botones para volver al menu o jugar de nuevo
             var btn = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(Screen.height * 0.035f) };
             float bw = Screen.width * 0.22f, bh = Screen.height * 0.08f;
             if (GUI.Button(new Rect(Screen.width * 0.5f - bw - 10f, Screen.height * 0.6f, bw, bh), "Volver al menú", btn))
             {
                 Time.timeScale = 1f;
-                SceneManager.LoadScene("MainMenu");
+                SceneManager.LoadScene(MainMenu.MenuSceneName);
             }
             if (GUI.Button(new Rect(Screen.width * 0.5f + 10f, Screen.height * 0.6f, bw, bh), "Jugar de nuevo", btn))
             {

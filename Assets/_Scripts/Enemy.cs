@@ -44,7 +44,24 @@ public class Enemy : MonoBehaviour
     public float harassMinSeconds = 45f;
     public float harassMaxSeconds = 90f;
     [Tooltip("Luz roja tenue en sus ojos: sirve para verlo de lejos en la oscuridad.")]
-    public bool redGlow = true;
+    [System.NonSerialized] public bool redGlow = false;   // desactivado: sin ojos brillantes
+    [Tooltip("Alcance de la luz de los ojos en metros (0 = 12).")]
+    public float glowRange = 12f;
+    public float glowIntensity = 2.5f;
+    [Tooltip("Donde EMPIEZA a caminar en el primer avistamiento. Objeto llamado Avistamiento_Inicio; si esta vacio se busca por nombre.")]
+    public Transform sightingStart;
+    [Tooltip("Hacia donde camina en el primer avistamiento. Objeto llamado Avistamiento_Fin.")]
+    public Transform sightingEnd;
+    [Tooltip("Con puntos de avistamiento: empieza a caminar cuando estas a menos de esta distancia del camino Y miras hacia el (0 = 70 m).")]
+    public float sightingTriggerDistance = 70f;
+
+    [Header("Encuentro en la cabaña (aparece si o si)")]
+    [Tooltip("Cuando llegas a la cabaña, el enemigo aparece en la zona de aparicion, este donde este.")]
+    public bool guaranteedCabinEncounter = true;
+    [Tooltip("Zona rectangular (entre la torre y la cabaña). Vacio = se crea sola.")]
+    public EnemySpawnZone spawnZone;
+    [Tooltip("Distancia a la cabaña a la que se dispara el encuentro (0 = 60 m).")]
+    public float cabinTriggerRadius = 60f;
 
     [Header("Velocidades")]
     public float wanderSpeed = 1.4f;
@@ -72,6 +89,8 @@ public class Enemy : MonoBehaviour
     [Tooltip("Si te persigue este tiempo sin tocarte, se cansa y te busca en vez de seguirte (0 = 20 s).")]
     public float chaseMaxSeconds = 20f;
     [TextArea] public string touchMessage = "Algo te rozó en la oscuridad…";
+    /// <summary>Fraccion de la vida maxima que quita cada ataque (0.25 = una cuarta parte).</summary>
+    [Range(0.05f, 1f)] public float touchDamageFraction = 0.25f;
 
     [Header("Retirada (no muere)")]
     public float retreatDamage = 100f;        // con pistola de 25 = 4 disparos
@@ -98,6 +117,10 @@ public class Enemy : MonoBehaviour
     public float scareTargetHeight = 1.7f;
     public float scareDistance = 1.3f;        // (antiguo, ya no se usa)
     public float scareSeconds = 1.6f;
+    [Tooltip("Si estas a menos de esto de la mesa cuando empieza el jump scare, retrocedes (0 = 1.8 m).")]
+    public float scareMinDistance = 1.8f;
+    [Tooltip("Cuanto retrocedes como minimo (0 = 1 m).")]
+    public float scareBackStep = 1f;
     public float scareShake = 0.07f;
 
     [Header("Respiracion con variaciones")]
@@ -148,9 +171,17 @@ public class Enemy : MonoBehaviour
     Vector3 sightDir;
     float nextHarass;
     Light glow;
+    bool encounterDone;
+    CharacterController body;     // movimiento con colisiones: no atraviesa paredes
+    float verticalSpeed;
+    float stuckTimer;
+    float steerAngle;
+    float steerUntil;
 
     void Awake()
     {
+        // animacion en cuatro patas (procedural, por huesos)
+        if (GetComponent<QuadrupedCrawl>() == null) gameObject.AddComponent<QuadrupedCrawl>();
         health = GetComponent<Health>();
         health.destroyOnDeath = false;          // nunca debe morir
         health.Damaged += OnDamaged;            // cuenta golpes sin depender de la barra de vida
@@ -181,13 +212,19 @@ public class Enemy : MonoBehaviour
     void Start()
     {
         if (agent != null && !agent.isOnNavMesh) { agent.enabled = false; agent = null; }
+        if (agent == null) CreateBody();
+        SetCC(false);
         SnapToGround(true);          // pegarlo al suelo desde el primer frame
+        SetCC(true);
         home = transform.position;
         lastPos = transform.position;
         target = transform.position;
 
         CreateGlow();
         nextHarass = Time.time + 30f;
+
+        if (sightingStart == null || sightingEnd == null) FindSightingMarkers();
+        if (guaranteedCabinEncounter && spawnZone == null) spawnZone = EnemySpawnZone.Ensure();
 
         // oculto hasta que el jugador abra la salida del lab y salga
         if (waitForLabExit && exitDoor == null) exitDoor = FindFirstObjectByType<ExitDoor>(FindObjectsInactive.Include);
@@ -247,14 +284,16 @@ public class Enemy : MonoBehaviour
         glow = go.AddComponent<Light>();
         glow.type = LightType.Point;
         glow.color = new Color(1f, 0.1f, 0.05f);
-        glow.range = 7f;
-        glow.intensity = 1.6f;
+        glow.range = glowRange > 0f ? glowRange : 12f;
+        glow.intensity = glowIntensity > 0f ? glowIntensity : 2.5f;
         glow.shadows = LightShadows.None;
     }
 
     // ---------- primer avistamiento: camina a lo lejos, cruzando tu campo de vision, sin verte
     void BeginSighting()
     {
+        if (sightingStart != null && sightingEnd != null) { BeginMarkedSighting(); return; }
+
         Transform cam = player.cam.transform;
         Vector3 fwd = Flat(cam.forward);
         if (fwd.sqrMagnitude < 0.01f) fwd = Flat(player.transform.forward);
@@ -262,8 +301,7 @@ public class Enemy : MonoBehaviour
         Vector3 right = new Vector3(fwd.z, 0f, -fwd.x);
 
         float dist = sightingDistance > 0f ? sightingDistance : 65f;
-        if (RenderSettings.fog && RenderSettings.fogMode == FogMode.Linear)
-            dist = Mathf.Min(dist, Mathf.Max(30f, RenderSettings.fogEndDistance * 0.7f));
+        dist = Mathf.Min(dist, FogVisibleDistance());
         dist = Mathf.Min(dist, player.cam.farClipPlane * 0.8f);
 
         float side = Random.value < 0.5f ? -1f : 1f;
@@ -278,14 +316,125 @@ public class Enemy : MonoBehaviour
         SetVisible(true);
         sightTimer = sightingSeconds > 0f ? sightingSeconds : 25f;
         state = State.Sighting;
+        SetCC(false);                  // el avistamiento es lejos de ti: camina sin colisiones
         Debug.Log("[Enemy] Primer avistamiento a " + dist.ToString("0") + " m. Camina " + (sightTimer).ToString("0") + " s sin verte.");
+    }
+
+    // ---------- encuentro garantizado al llegar a la cabaña
+    bool CheckCabinEncounter()
+    {
+        if (!guaranteedCabinEncounter || encounterDone || spawnZone == null) return false;
+        float radius = cabinTriggerRadius > 0f ? cabinTriggerRadius : 60f;
+        if (Flat(player.transform.position - spawnZone.CabinPosition).magnitude > radius) return false;
+
+        ForceAppear();
+        return true;
+    }
+
+    // aparece dentro de la zona, de frente al jugador y a una distancia a la que se le ve, y lo persigue
+    void ForceAppear()
+    {
+        encounterDone = true;
+        SetCC(false);
+        Vector3 pp = player.transform.position;
+        Vector3 look = Flat(player.cam.transform.forward);
+        if (look.sqrMagnitude < 0.01f) look = Flat(player.transform.forward);
+
+        // entre 22 y 45 m del jugador; de los candidatos elige el que mas de frente queda
+        Vector3 best = Vector3.zero; float bestAngle = float.MaxValue; bool ok = false;
+        for (int i = 0; i < 40; i++)
+        {
+            Vector3 p = spawnZone.RandomPoint();
+            Vector3 toP = Flat(p - pp);
+            float d = toP.magnitude;
+            if (d < 22f || d > 45f) continue;
+            float ang = Vector3.Angle(look, toP);
+            if (ang < bestAngle) { bestAngle = ang; best = p; ok = true; }
+        }
+        if (!ok) best = pp + look.normalized * 32f;     // si ningun punto sirve: 32 m al frente
+
+        transform.position = new Vector3(best.x, transform.position.y, best.z);
+        SnapToGround(true);
+        Vector3 face = Flat(pp - transform.position);
+        if (face.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(face);
+        home = transform.position;
+        lastPos = transform.position;
+        SetVisible(true);
+
+        calmUntil = 0f;
+        target = pp;
+        nextTouch = Time.time + 2f;
+        SetState(State.Chase);
+        Debug.Log("[Enemy] Encuentro en la cabaña: aparece a " + Flat(pp - transform.position).magnitude.ToString("0") + " m, " + bestAngle.ToString("0") + "° de tu frente.");
+    }
+
+    // busca los objetos Avistamiento_Inicio y Avistamiento_Fin (los pone el menu del editor; tu los mueves)
+    void FindSightingMarkers()
+    {
+        foreach (var t in FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            string n = t.name.ToLowerInvariant().Replace(" ", "").Replace("_", "");
+            if (n == "avistamientoinicio") sightingStart = t;
+            else if (n == "avistamientofin") sightingEnd = t;
+        }
+    }
+
+    // con ruta fija: espera a que estes cerca del camino y mirando hacia el, para que siempre lo veas
+    bool ReadyToSight()
+    {
+        if (sightingStart == null || sightingEnd == null) return true;
+
+        Vector3 mid = (sightingStart.position + sightingEnd.position) * 0.5f;
+        Vector3 toMid = Flat(mid - player.transform.position);
+        float trigger = sightingTriggerDistance > 0f ? sightingTriggerDistance : 70f;
+        if (toMid.magnitude > trigger) return false;
+
+        Vector3 look = Flat(player.cam.transform.forward);
+        return look.sqrMagnitude > 0.01f && Vector3.Angle(look, toMid) < 40f;
+    }
+
+    // la ruta fija va de Avistamiento_Inicio a Avistamiento_Fin
+    void BeginMarkedSighting()
+    {
+        Vector3 a = sightingStart.position, b = sightingEnd.position;
+        transform.position = new Vector3(a.x, transform.position.y, a.z);
+        SnapToGround(true);
+        sightDir = Flat(b - a).normalized;
+        if (sightDir.sqrMagnitude < 0.01f) sightDir = Vector3.forward;
+        transform.rotation = Quaternion.LookRotation(sightDir);
+        home = transform.position;
+        lastPos = transform.position;
+        SetVisible(true);
+
+        float speed = sightingSpeed > 0f ? sightingSpeed : 1.5f;
+        sightTimer = Flat(b - a).magnitude / speed + 6f;        // lo que tarda en cruzar, con margen
+        state = State.Sighting;
+        SetCC(false);                  // el avistamiento es lejos de ti: camina sin colisiones
+        Debug.Log("[Enemy] Primer avistamiento por la ruta marcada: " + Flat(b - a).magnitude.ToString("0") + " m, " + sightTimer.ToString("0") + " s.");
+    }
+
+    // hasta donde se alcanza a ver con la niebla actual (visibilidad de ~37%)
+    static float FogVisibleDistance()
+    {
+        if (!RenderSettings.fog) return 1000f;
+        switch (RenderSettings.fogMode)
+        {
+            case FogMode.Linear: return Mathf.Max(25f, RenderSettings.fogStartDistance + (RenderSettings.fogEndDistance - RenderSettings.fogStartDistance) * 0.6f);
+            case FogMode.Exponential:
+            case FogMode.ExponentialSquared: return Mathf.Max(25f, 0.9f / Mathf.Max(0.0005f, RenderSettings.fogDensity));
+        }
+        return 1000f;
     }
 
     void UpdateSighting()
     {
         sightTimer -= Time.deltaTime;
         float dist = Flat(player.transform.position - transform.position).magnitude;
-        if (dist < (sightingTooCloseDistance > 0f ? sightingTooCloseDistance : 22f)) { EndSighting(); return; }
+        bool marked = sightingStart != null && sightingEnd != null;
+        float tooClose = sightingTooCloseDistance > 0f ? sightingTooCloseDistance : 22f;
+        if (marked) tooClose = Mathf.Min(tooClose, 10f);          // con ruta fija se le deja acercarse mas
+        if (dist < tooClose) { EndSighting(); return; }
+        if (marked && Flat(sightingEnd.position - transform.position).magnitude < 1.5f) { EndSighting(); return; }   // llego al final de su ruta
 
         transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(sightDir), Time.deltaTime * 3f);
         transform.position += sightDir * (sightingSpeed > 0f ? sightingSpeed : 1.5f) * Time.deltaTime;
@@ -323,10 +472,13 @@ public class Enemy : MonoBehaviour
         }
         if (state == State.Scare) return;
 
+        // Encuentro garantizado: al llegar a la cabaña aparece, este donde este
+        if (CheckCabinEncounter()) return;
+
         // Inactivo: espera a que el jugador abra la salida y salga del laboratorio
         if (state == State.Inactive)
         {
-            if (exitDoor != null && exitDoor.IsOpen && PlayerOutsideLab()) BeginSighting();
+            if (exitDoor != null && exitDoor.IsOpen && PlayerOutsideLab() && ReadyToSight()) BeginSighting();
             return;
         }
 
@@ -446,7 +598,7 @@ public class Enemy : MonoBehaviour
         else if (speed > 0.3f) radius = walkNoise;
 
         // un disparo hace mucho ruido (pistola equipada y clic)
-        if (Input.GetMouseButtonDown(0) && FindFirstObjectByType<PistolWeapon>() != null) radius = Mathf.Max(radius, shotNoise);
+        if (Time.time - PistolWeapon.LastShotTime < 0.25f) radius = Mathf.Max(radius, shotNoise);
 
         return radius > 0f && dist <= radius;
     }
@@ -480,7 +632,9 @@ public class Enemy : MonoBehaviour
     void Touch()
     {
         nextTouch = Time.time + touchCooldown;
-        if (!string.IsNullOrEmpty(touchMessage)) player.ShowMessage(touchMessage, 2.5f);
+        var ph = PlayerHealth.Of(player);
+        ph.TakeDamage(ph.maxHealth * (touchDamageFraction > 0f ? touchDamageFraction : 0.25f));
+        if (!string.IsNullOrEmpty(touchMessage) && !ph.IsDead) player.ShowMessage(touchMessage, 2.5f);
         Play(touchSound, player.cam.transform.position, 1f);
         StartCoroutine(Shake(player.cam.transform, 0.35f, 0.08f));
         StartRetreat();
@@ -527,8 +681,72 @@ public class Enemy : MonoBehaviour
         Vector3 d = Flat(dest - transform.position);
         if (d.sqrMagnitude < 0.01f) return;
         transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(d), Time.deltaTime * 6f);
+        // con cuerpo: choca con paredes y esquiva obstaculos; sin cuerpo: movimiento simple (antiguo)
+        if (body != null && body.enabled)
+        {
+            Vector3 dir = Steer(d.normalized);
+            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir), Time.deltaTime * 6f);
+
+            Vector3 before = transform.position;
+            if (body.isGrounded) verticalSpeed = -2f; else verticalSpeed += -20f * Time.deltaTime;
+            Vector3 motion = dir * spd + Vector3.up * verticalSpeed;
+            body.Move(motion * Time.deltaTime);
+
+            // si casi no avanza, esta atorado contra una pared: tras unos segundos deja de empujar y te busca
+            float moved = Flat(transform.position - before).magnitude;
+            if (moved < spd * Time.deltaTime * 0.2f) stuckTimer += Time.deltaTime; else stuckTimer = 0f;
+            if (stuckTimer > 4f && (state == State.Chase || state == State.Investigate))
+            {
+                stuckTimer = 0f;
+                timer = searchSeconds;
+                calmUntil = Time.time + 6f;
+                state = State.Search;
+            }
+            return;
+        }
+
         transform.position += d.normalized * spd * Time.deltaTime;
         SnapToGround(false);
+    }
+
+    // si hay algo adelante, prueba otras direcciones (35, 70 y 110 grados a cada lado) y recuerda la elegida un momento
+    Vector3 Steer(Vector3 dir)
+    {
+        Vector3 origin = transform.position + Vector3.up * 0.9f;
+        const float look = 1.8f;
+
+        if (Time.time < steerUntil)
+        {
+            Vector3 held = Quaternion.Euler(0f, steerAngle, 0f) * dir;
+            if (!Blocked(origin, held, look)) return held;
+        }
+        if (!Blocked(origin, dir, look)) { steerAngle = 0f; return dir; }
+
+        float[] angles = { 35f, -35f, 70f, -70f, 110f, -110f };
+        foreach (float a in angles)
+        {
+            Vector3 d2 = Quaternion.Euler(0f, a, 0f) * dir;
+            if (Blocked(origin, d2, look)) continue;
+            steerAngle = a;
+            steerUntil = Time.time + 0.6f;
+            return d2;
+        }
+        return dir;
+    }
+
+    // verdadero si una pared u objeto solido bloquea el paso (ignora al propio enemigo, al jugador y al terreno)
+    bool Blocked(Vector3 origin, Vector3 dir, float distance)
+    {
+        var hits = Physics.SphereCastAll(origin, 0.3f, dir, distance, ~0, QueryTriggerInteraction.Ignore);
+        foreach (var h in hits)
+        {
+            if (h.collider.transform.IsChildOf(transform)) continue;
+            if (h.collider is TerrainCollider) continue;
+            if (h.collider.GetComponentInParent<PlayerController>() != null) continue;
+            if (h.distance <= 0.001f) continue;       // ya esta dentro de ese collider
+            return true;
+        }
+        return false;
     }
 
     void SnapToGround(bool instant)
@@ -561,6 +779,41 @@ public class Enemy : MonoBehaviour
         foreach (var c in colliders) if (c != null) c.enabled = v;
         if (agent != null) agent.enabled = v;
         if (glow != null) glow.enabled = v;
+        if (body != null) body.enabled = v && state != State.Sighting && state != State.Scare;
+    }
+
+    // crea un CharacterController ajustado al tamano del modelo
+    void CreateBody()
+    {
+        body = GetComponent<CharacterController>();
+        if (body == null) body = gameObject.AddComponent<CharacterController>();
+
+        Bounds b = new Bounds(transform.position, new Vector3(0.8f, 1.8f, 0.8f));
+        bool any = false;
+        foreach (var r in renderers)
+        {
+            if (!(r is MeshRenderer) && !(r is SkinnedMeshRenderer)) continue;
+            if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
+        }
+
+        float scale = Mathf.Max(0.0001f, Mathf.Abs(transform.lossyScale.y));
+        float h = Mathf.Clamp(b.size.y, 1.2f, 2.4f);                          // alto real en metros
+        float radius = Mathf.Clamp(Mathf.Min(b.size.x, b.size.z) * 0.35f, 0.25f, 0.45f);
+
+        body.height = h / scale;
+        body.radius = radius / scale;
+        body.center = transform.InverseTransformPoint(new Vector3(b.center.x, transform.position.y + h * 0.5f, b.center.z));
+        body.stepOffset = Mathf.Min(0.4f, h * 0.3f);
+        body.slopeLimit = 50f;
+        body.skinWidth = 0.05f;
+        body.enableOverlapRecovery = true;
+    }
+
+    // enciende o apaga el cuerpo; apagarlo antes de teletransportar evita que Unity lo devuelva a su sitio
+    void SetCC(bool on)
+    {
+        if (body != null) body.enabled = on;
+        verticalSpeed = 0f;
     }
 
     // pasos pesados: avisan que viene antes de verlo
@@ -646,6 +899,29 @@ public class Enemy : MonoBehaviour
 
         Transform cam = p.cam.transform;
         p.enabled = false;                       // el jugador ya no puede moverse ni mirar a otro lado
+
+        // si estas muy pegado a la mesa, retrocedes un poco para que el enemigo se vea entero
+        if (spot != null)
+        {
+            var cc0 = p.GetComponent<CharacterController>();
+            Vector3 away = Flat(p.transform.position - spot.position);
+            float d0 = away.magnitude;
+            float minD = scareMinDistance > 0f ? scareMinDistance : 1.8f;
+            if (cc0 != null && d0 < minD)
+            {
+                if (away.sqrMagnitude < 0.01f) away = -Flat(cam.forward);
+                away.Normalize();
+                float step = Mathf.Max(scareBackStep > 0f ? scareBackStep : 1f, minD - d0);
+                float moved = 0f;
+                while (moved < step)
+                {
+                    float dm = Mathf.Min(step - moved, 4f * Time.deltaTime);
+                    cc0.Move(away * dm);          // respeta paredes
+                    moved += dm;
+                    yield return null;
+                }
+            }
+        }
 
         // tamano: si el modelo es chico se agranda para que imponga
         transform.localScale = baseScale;

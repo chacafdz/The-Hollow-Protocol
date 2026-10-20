@@ -14,6 +14,9 @@ public class MainMenu : MonoBehaviour
     /// <summary>Musica ambiental del menu (opcional).</summary>
     public AudioClip menuMusic;
 
+    /// <summary>Nombre de la escena del menu principal (debe estar en Build Settings).</summary>
+    public const string MenuSceneName = "Main Menu";
+
     /// <summary>Clave de PlayerPrefs donde se guarda el volumen.</summary>
     public const string VolumeKey = "volumen";
 

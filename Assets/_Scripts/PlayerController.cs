@@ -13,6 +13,8 @@ public class PlayerController : MonoBehaviour
     public float walkSpeed = 3.5f;
     public float runSpeed = 5.5f;
     public float gravity = -20f;
+    /// <summary>Altura del salto en metros (tecla Espacio).</summary>
+    public float jumpHeight = 1.1f;
 
     [Header("Cámara")]
     public float mouseSensitivity = 2f;
@@ -27,6 +29,9 @@ public class PlayerController : MonoBehaviour
     CharacterController cc;
     float pitch;
     float verticalVelocity;
+    float lastGroundedTime = -10f;
+    /// <summary>Si es true el jugador no puede moverse, mirar ni interactuar (final del juego).</summary>
+    [HideInInspector] public bool frozen;
     Interactable current;
     string message = "";
     float messageUntil;
@@ -42,6 +47,7 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
+        if (frozen) return;   // congelado: no se mueve, no mira, no interactua (los mensajes siguen)
         Look();
         Move();
         HandleFlashlight();
@@ -63,11 +69,24 @@ public class PlayerController : MonoBehaviour
         float z = Input.GetAxisRaw("Vertical");
         Vector3 dir = Vector3.ClampMagnitude(transform.right * x + transform.forward * z, 1f);
         float speed = Input.GetKey(KeyCode.LeftShift) ? runSpeed : walkSpeed;
-        cc.Move(dir * speed * Time.deltaTime);
 
-        if (cc.isGrounded && verticalVelocity < 0f) verticalVelocity = -2f;
+        // isGrounded refleja el ULTIMO cc.Move; por eso se lee antes de mover y se usa un solo Move por frame
+        // (si se leyera despues de un Move horizontal, casi siempre daria falso y no se podria saltar)
+        bool grounded = cc.isGrounded;
+        if (grounded) lastGroundedTime = Time.time;
+        if (grounded && verticalVelocity < 0f) verticalVelocity = -2f;
+
+        // salto con un pequeno margen (0.12 s) para que no se pierda al pisar el borde
+        bool canJump = Time.time - lastGroundedTime <= 0.12f;
+        if (canJump && (Input.GetButtonDown("Jump") || Input.GetKeyDown(KeyCode.Space)))
+        {
+            verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            lastGroundedTime = -10f;      // evita un segundo salto en el aire
+        }
+
         verticalVelocity += gravity * Time.deltaTime;
-        cc.Move(Vector3.up * verticalVelocity * Time.deltaTime);
+        Vector3 velocity = dir * speed + Vector3.up * verticalVelocity;
+        cc.Move(velocity * Time.deltaTime);
     }
 
     void HandleFlashlight()
@@ -120,7 +139,9 @@ public class PlayerController : MonoBehaviour
         if (Time.time < messageUntil)
         {
             GUI.color = Color.white;
-            GUI.Label(new Rect(Screen.width * 0.15f, Screen.height * 0.8f, Screen.width * 0.7f, 80), message, style);
+            float mw = Screen.width * 0.7f;
+            float mh = style.CalcHeight(new GUIContent(message), mw) + 10f;
+            GUI.Label(new Rect(Screen.width * 0.15f, Mathf.Min(Screen.height * 0.78f, Screen.height - mh - 8f), mw, mh), message, style);
         }
     }
 }

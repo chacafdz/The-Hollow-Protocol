@@ -139,6 +139,9 @@ public static class UIKit
 
         var fill = new GameObject("Relleno", typeof(RectTransform), typeof(Image));
         fill.transform.SetParent(fillArea.transform, false);
+        var fillRt = (RectTransform)fill.transform;
+        fillRt.anchorMin = Vector2.zero; fillRt.anchorMax = Vector2.one;       // ocupa todo el alto del area, no 100 px
+        fillRt.offsetMin = Vector2.zero; fillRt.offsetMax = Vector2.zero;
         fill.GetComponent<Image>().color = new Color(0.75f, 0.1f, 0.1f);
 
         // manija
@@ -150,7 +153,9 @@ public static class UIKit
 
         var handle = new GameObject("Manija", typeof(RectTransform), typeof(Image));
         handle.transform.SetParent(handleArea.transform, false);
-        ((RectTransform)handle.transform).sizeDelta = new Vector2(20f, 0f);
+        var handleRt = (RectTransform)handle.transform;
+        handleRt.anchorMin = new Vector2(0f, 0f); handleRt.anchorMax = new Vector2(0f, 1f);   // alto = alto del deslizador
+        handleRt.sizeDelta = new Vector2(20f, 0f);
         var himg = handle.GetComponent<Image>();
         himg.color = Color.white;
 

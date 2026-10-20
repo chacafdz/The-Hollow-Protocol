@@ -57,7 +57,7 @@ public class CompassHUD : MonoBehaviour
         float yaw = transform.eulerAngles.y;
 
         if (style == null)
-            style = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter };
+            style = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, wordWrap = false, clipping = TextClipping.Overflow };
         style.fontSize = Mathf.RoundToInt(Hh * 0.5f);
 
         // Fondo
@@ -105,7 +105,7 @@ public class CompassHUD : MonoBehaviour
 
             string txt = m.label + (showDistance ? " " + Mathf.RoundToInt(dist / 10f) * 10 + " m" : "");
             if (!visible) txt = (rel < 0 ? "< " : "") + txt + (rel > 0 ? " >" : "");
-            GUI.Label(new Rect(x - 90f, top - Hh * 0.75f, 180f, Hh * 0.7f), txt, style);
+            GUI.Label(new Rect(x - 150f, top - Hh * 1.0f, 300f, Hh * 0.9f), txt, style);
         }
 
         GUI.color = Color.white;

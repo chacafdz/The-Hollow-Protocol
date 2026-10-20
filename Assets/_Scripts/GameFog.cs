@@ -11,10 +11,10 @@ public class GameFog : MonoBehaviour
     public Color fogColor = new Color(0.11f, 0.14f, 0.19f);
 
     /// <summary>Densidad de la niebla. Mas alto = se ve menos lejos.</summary>
-    [Range(0f, 0.08f)] public float density = 0.022f;
+    [Range(0f, 0.08f)] public float density = 0.02f;
 
     /// <summary>Tipo de niebla.</summary>
-    public FogMode mode = FogMode.ExponentialSquared;
+    public FogMode mode = FogMode.Exponential;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Init()

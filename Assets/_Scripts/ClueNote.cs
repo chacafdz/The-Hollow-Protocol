@@ -9,6 +9,14 @@ public class ClueNote : Interactable
     public float showSeconds = 8f;
     public bool countsAsClue = true;
 
+    [Header("Documento (opcional, estilo Resident Evil)")]
+    /// <summary>Imagen del documento. Si hay una, al examinar se abre a pantalla completa.</summary>
+    public Texture2D documentImage;
+    /// <summary>Titulo del documento en el visor.</summary>
+    public string documentTitle = "";
+    /// <summary>Transcripcion del texto del documento (se ve con T).</summary>
+    [TextArea(4, 14)] public string transcript = "";
+
     [Header("Brujula (opcional)")]
     public Transform pointsTo;                    // lugar que esta pista senala (casa, cabana...)
     public string pointsToLabel = "Destino";
@@ -45,7 +53,23 @@ public class ClueNote : Interactable
             }
         }
 
-        player.ShowMessage(prefix + clueText + suffix, showSeconds);
+        // documento: primero el catalogo por nombre (Pista_Mapa, Pista_Foto...), si no, lo asignado en el Inspector
+        Texture2D img = documentImage;
+        string title = string.IsNullOrEmpty(documentTitle) ? name : documentTitle;
+        string text = transcript;
+        string key = DocumentLibrary.KeyFor(transform);
+        if (key != null && DocumentLibrary.TryGet(key, out var libImg, out var libTitle, out var libText))
+        {
+            img = libImg; title = libTitle; text = libText;
+        }
+
+        if (img != null)
+        {
+            DocumentViewer.Show(player, img, title, text);
+            // al cerrar solo queda un aviso corto; el texto completo ya se leyo en el visor
+            player.ShowMessage(prefix + title + suffix, suffix.Length > 0 ? showSeconds : 2.5f);
+        }
+        else player.ShowMessage(prefix + clueText + suffix, showSeconds);
         PlaySound();
     }
 }

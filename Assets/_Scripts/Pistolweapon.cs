@@ -1,7 +1,12 @@
+using System.Collections;
 using UnityEngine;
 
-// Se agrega en tiempo de ejecucion desde PistolPickup.
-// Disparo por raycast: trazador visible, chispa de impacto y dano a todo lo que tenga Health.
+/// <summary>
+/// Pistola del jugador. Se agrega en tiempo de ejecucion desde <see cref="PistolPickup"/>.
+/// Disparo por raycast con trazador visible, chispa de impacto y dano a todo lo que tenga <see cref="Health"/>.
+/// Tiene cargador de 8 balas: al vaciarse hay que recargar con R usando la municion de reserva del
+/// <see cref="Inventory"/> (se consigue en cajas de municion).
+/// </summary>
 public class PistolWeapon : MonoBehaviour
 {
     public Transform muzzle;
@@ -12,17 +17,40 @@ public class PistolWeapon : MonoBehaviour
     public float recoil = 0.05f;
     public AudioClip fireSound;
 
+    [Header("Municion")]
+    /// <summary>Balas que caben en el cargador. La pistola empieza con el cargador lleno.</summary>
+    public int magazineSize = 8;
+    /// <summary>Segundos que tarda la recarga.</summary>
+    public float reloadSeconds = 1.6f;
+    public AudioClip reloadSound;
+
+    /// <summary>Momento (Time.time) del ultimo disparo. El enemigo lo usa para oirlo.</summary>
+    public static float LastShotTime = -100f;
+
+    /// <summary>Balas que quedan en el cargador.</summary>
+    public int AmmoInMagazine { get; private set; }
+
+    /// <summary>Verdadero mientras se recarga.</summary>
+    public bool IsReloading { get; private set; }
+
     float nextShot;
     float flashUntil;
     Vector3 restPos;
     Light flash;
     Material fxMat;
+    PlayerController owner;
+    Inventory inventory;
 
     void Start()
     {
         restPos = transform.localPosition;
         if (cam == null) cam = Camera.main;
         if (muzzle == null) muzzle = transform;
+
+        owner = GetComponentInParent<PlayerController>();
+        if (owner == null) owner = FindFirstObjectByType<PlayerController>();
+        if (owner != null) inventory = Inventory.Of(owner);
+        AmmoInMagazine = magazineSize;
 
         // Material simple siempre incluido en las builds
         fxMat = new Material(Shader.Find("Sprites/Default"));
@@ -50,18 +78,70 @@ public class PistolWeapon : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetMouseButtonDown(0) && Time.time >= nextShot)
+        if (Time.timeScale == 0f) return;       // en pausa o con el jugador muerto
+
+        if (Input.GetKeyDown(KeyCode.R)) TryReload();
+
+        if (Input.GetMouseButtonDown(0) && Time.time >= nextShot && !IsReloading)
         {
-            nextShot = Time.time + cooldown;
-            Fire();
+            if (AmmoInMagazine <= 0)
+            {
+                nextShot = Time.time + 0.4f;
+                Say("Cargador vacío. Pulsa R para recargar.");
+            }
+            else
+            {
+                nextShot = Time.time + cooldown;
+                Fire();
+            }
         }
 
         if (flash.enabled && Time.time > flashUntil) flash.enabled = false;
-        transform.localPosition = Vector3.Lerp(transform.localPosition, restPos, Time.deltaTime * 15f);
+
+        // vuelve a su sitio; al recargar baja un poco
+        Vector3 target = IsReloading ? restPos + new Vector3(0f, -0.12f, -0.03f) : restPos;
+        transform.localPosition = Vector3.Lerp(transform.localPosition, target, Time.deltaTime * 15f);
+    }
+
+    /// <summary>Intenta recargar con la municion de reserva.</summary>
+    public void TryReload()
+    {
+        if (IsReloading || AmmoInMagazine >= magazineSize) return;
+
+        int reserve = inventory != null ? inventory.reserveAmmo : 0;
+        if (reserve <= 0)
+        {
+            Say("No tienes munición de reserva. Busca una caja.");
+            return;
+        }
+        StartCoroutine(Reload());
+    }
+
+    IEnumerator Reload()
+    {
+        IsReloading = true;
+        if (reloadSound != null) AudioSource.PlayClipAtPoint(reloadSound, transform.position);
+        Say("Recargando…");
+
+        yield return new WaitForSeconds(reloadSeconds);
+
+        int take = Mathf.Min(magazineSize - AmmoInMagazine, inventory != null ? inventory.reserveAmmo : 0);
+        AmmoInMagazine += take;
+        if (inventory != null) inventory.reserveAmmo -= take;
+        IsReloading = false;
+    }
+
+    void Say(string text)
+    {
+        if (owner != null) owner.ShowMessage(text, 2f);
     }
 
     void Fire()
     {
+        AmmoInMagazine--;
+        LastShotTime = Time.time;
+        if (AmmoInMagazine == 0) Say("Último disparo. Pulsa R para recargar.");
+
         if (fireSound != null)
             AudioSource.PlayClipAtPoint(fireSound, transform.position);
 
