@@ -1,3 +1,0 @@
-﻿Pitch y High Concept Document: pendientes de agregar aqui.
-La rubrica de EBAC (Avance 2) pide incluir en esta carpeta, junto con el GDD de 10 paginas y la
-documentacion Doxygen, el pitch y el High Concept Document entregados en el Avance 1.
