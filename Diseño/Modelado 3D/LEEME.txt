@@ -1,12 +1,13 @@
 ﻿Modelado 3D de The Hollow Protocol
 
-Modelos hechos en Maya por el autor, exportados a FBX:
+Modelos hechos en Maya por el autor, exportados a FBX (con UVs):
 
   labV2.fbx          -> laboratorio
   labvV2Inicio.fbx   -> inicio del laboratorio
   torre.fbx          -> Torre 7
   CasaVieja.fbx      -> casa vieja
   cabaña.fbx         -> cabaña
+  Basurero.fbx       -> bote de basura metalico (render: Basurero_render.jpg)
 
 En el juego se usan desde Assets/_Prefabs (la cabaña con sus texturas en Assets/_Textures/Cabaña).
 El monstruo es un modelo de terceros: ver CREDITS.txt.
