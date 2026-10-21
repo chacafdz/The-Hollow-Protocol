@@ -2,12 +2,15 @@
 
 Modelos hechos en Maya por el autor, exportados a FBX (con UVs):
 
+En el juego (tambien en Assets/_Prefabs):
   labV2.fbx          -> laboratorio
   labvV2Inicio.fbx   -> inicio del laboratorio
   torre.fbx          -> Torre 7
   CasaVieja.fbx      -> casa vieja
-  cabaña.fbx         -> cabaña
-  Basurero.fbx       -> bote de basura metalico (render: Basurero_render.jpg)
+  cabaña.fbx         -> cabaña (texturas en Assets/_Textures/Cabaña)
 
-En el juego se usan desde Assets/_Prefabs (la cabaña con sus texturas en Assets/_Textures/Cabaña).
+Props del curso de modelado 3D:
+  Basurero.fbx       -> bote de basura metalico (render: Basurero_render.jpg)
+  Bongos.fbx         -> bongos, version low poly texturizada en Substance (render: Bongos_render.png)
+
 El monstruo es un modelo de terceros: ver CREDITS.txt.
